@@ -202,6 +202,40 @@ def view_product(product_id):
     seller = cursor.fetchone()
     return render_template('view_product.html', product=product, seller=seller)
 
+# 포인트 충전하기
+@app.route('/charge', methods=['GET', 'POST'])
+def charge():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.cursor()
+
+    if request.method == 'POST':
+        amount = int(request.form['amount'])
+        cursor.execute("UPDATE user SET cash = cash + ? WHERE id = ?", (amount, session['user_id']))
+        db.commit()
+        flash(f'{amount}원 충전되었습니다.')
+        return redirect(url_for('dashboard'))
+
+    cursor.execute("SELECT * FROM user WHERE id = ?", (session['user_id'],))
+    current_user = cursor.fetchone()
+
+    return render_template('charge.html', user=current_user)
+
+# 테스트용: 로그인한 사용자의 cash를 0으로 초기화 (나중에 삭제)
+@app.route('/reset_cash')
+def reset_cash():  # test
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("UPDATE user SET cash = 0 WHERE id = ?", (session['user_id'],))
+    db.commit()
+    flash("보유 금액이 0원으로 초기화되었습니다. (테스트용 기능)")
+    return redirect(url_for('dashboard'))
+
 # 신고하기
 @app.route('/report', methods=['GET', 'POST'])
 def report():

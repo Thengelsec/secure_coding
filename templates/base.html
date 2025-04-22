@@ -87,16 +87,29 @@
 </head>
 <body>
   <nav>
-    {% if session.get('user_id') %}
-      <a href="{{ url_for('dashboard') }}">대시보드</a>
-      <a href="{{ url_for('profile') }}">프로필</a>
-      <a href="{{ url_for('report') }}">신고하기</a>
-      <a href="{{ url_for('logout') }}">로그아웃</a>
-    {% else %}
-      <a href="{{ url_for('login') }}">로그인</a>
-      <a href="{{ url_for('register') }}">회원가입</a>
+    <div>
+      {% if session.get('user_id') %}
+        <a href="{{ url_for('dashboard') }}">대시보드</a>
+        <a href="{{ url_for('profile') }}">프로필</a>
+        <a href="{{ url_for('report') }}">신고하기</a>
+        <a href="{{ url_for('logout') }}">로그아웃</a>
+      {% else %}
+        <a href="{{ url_for('login') }}">로그인</a>
+        <a href="{{ url_for('register') }}">회원가입</a>
+      {% endif %}
+    </div>
+    {% if user %}
+    <div style="position: absolute; top: 20px; right: 20px; display: flex; align-items: center; gap: 10px;">
+      <form action="{{ url_for('charge') }}" method="get" style="margin: 0;">
+        <button type="submit" style="padding: 6px 12px; margin: 0; width: auto; background-color: #007AFF; color: white; border: none; border-radius: 4px; cursor: pointer;">
+          충전하기
+        </button>
+      </form>
+      <span style="white-space: nowrap; font-size: 14px;">보유 금액: {{ user.cash }}원</span>
+    </div>
     {% endif %}
   </nav>
+
   <div class="container">
     {% with messages = get_flashed_messages() %}
       {% if messages %}
