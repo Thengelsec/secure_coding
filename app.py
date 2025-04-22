@@ -58,6 +58,21 @@ def init_db():
         """)
         db.commit()
 
+# 전체 페이지 user 관리
+@app.before_request
+def load_user():
+    g.user = None
+    if 'user_id' in session:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("SELECT id, username, bio, cash FROM user WHERE id = ?", (session['user_id'],))
+        g.user = cursor.fetchone()
+
+# 템플릿 user 자동 사용
+@app.context_processor
+def inject_user():
+    return dict(user=g.user)
+
 # 기본 라우트
 @app.route('/')
 def index():
@@ -145,7 +160,6 @@ def dashboard():
     return render_template(
         'dashboard.html',
         products=all_products,  # 검색 결과 전달
-        user=current_user,
         keyword=keyword  # 템플릿에서 검색어 재사용
     )
 
@@ -164,7 +178,7 @@ def profile():
         return redirect(url_for('profile'))
     cursor.execute("SELECT * FROM user WHERE id = ?", (session['user_id'],))
     current_user = cursor.fetchone()
-    return render_template('profile.html', user=current_user)
+    return render_template('profile.html')
 
 # 프로필 뷰어 페이지
 @app.route('/user/<user_id>')
@@ -214,7 +228,11 @@ def view_product(product_id):
     # 판매자 정보 조회
     cursor.execute("SELECT * FROM user WHERE id = ?", (product['seller_id'],))
     seller = cursor.fetchone()
-    return render_template('view_product.html', product=product, seller=seller)
+    return render_template(
+        'view_product.html', 
+        product=product, 
+        seller=seller
+    )
 
 # 포인트 충전하기
 @app.route('/charge', methods=['GET', 'POST'])
@@ -235,7 +253,7 @@ def charge():
     cursor.execute("SELECT * FROM user WHERE id = ?", (session['user_id'],))
     current_user = cursor.fetchone()
 
-    return render_template('charge.html', user=current_user)
+    return render_template('charge.html')
 
 # 테스트용: 로그인한 사용자의 cash를 0으로 초기화 (나중에 삭제)
 @app.route('/reset_cash')
