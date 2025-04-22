@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}사용자 프로필{% endblock %}
+{% block content %}
+<h2>사용자 프로필</h2>
+<p>사용자명: {{ user.username }}</p>
+<p>소개글:</p>
+<p style="white-space: pre-line;">{{ user.bio or '소개글이 없습니다.' }}</p>
+{% endblock %}

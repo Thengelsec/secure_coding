@@ -166,6 +166,20 @@ def profile():
     current_user = cursor.fetchone()
     return render_template('profile.html', user=current_user)
 
+# 프로필 뷰어 페이지
+@app.route('/user/<user_id>')
+def view_user_profile(user_id):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM user WHERE id = ?", (user_id,))
+    user_profile = cursor.fetchone()
+
+    if not user_profile:
+        flash("사용자를 찾을 수 없습니다.")
+        return redirect(url_for('dashboard'))
+
+    return render_template('view_profile.html', user=user_profile)
+
 # 상품 등록
 @app.route('/product/new', methods=['GET', 'POST'])
 def new_product():
