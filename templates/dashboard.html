@@ -2,6 +2,14 @@
 {% block title %}대시보드{% endblock %}
 {% block content %}
 <h2>대시보드</h2>
+<form method="get" action="{{ url_for('dashboard') }}">
+  <input type="text" name="word" placeholder="상품명, 설명, 가격 검색" value="{{ keyword or '' }}">
+  <button type="submit">검색</button>
+</form>
+
+{% if keyword %}
+  <p><strong>"{{ keyword }}"</strong>에 대한 검색 결과</p>
+{% endif %}
 <h3>등록된 상품</h3>
 <ul>
   {% for product in products %}

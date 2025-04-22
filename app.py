@@ -33,7 +33,8 @@ def init_db():
                 id TEXT PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
-                bio TEXT
+                bio TEXT,
+                cash INTEGER DEFAULT 0 
             )
         """)
         # 상품 테이블 생성
@@ -121,10 +122,32 @@ def dashboard():
     # 현재 사용자 조회
     cursor.execute("SELECT * FROM user WHERE id = ?", (session['user_id'],))
     current_user = cursor.fetchone()
-    # 모든 상품 조회
-    cursor.execute("SELECT * FROM product")
+
+    # 검색기능
+    keyword = request.args.get('word', '').strip()
+    if keyword:
+        # 키워드를 포함한 상품 제목, 설명, 가격을 모두 검색
+        like = f'%{keyword}%'
+        cursor.execute("""
+            SELECT product.*, user.username 
+            FROM product
+            JOIN user ON product.seller_id = user.id
+            WHERE title LIKE ? 
+                OR description LIKE ? 
+                OR price LIKE ?
+                OR user.username LIKE ?
+        """, (like, like, like, like))
+    else:
+        cursor.execute("SELECT * FROM product")  # 키워드 없으면 전체 조회
+
     all_products = cursor.fetchall()
-    return render_template('dashboard.html', products=all_products, user=current_user)
+
+    return render_template(
+        'dashboard.html',
+        products=all_products,  # 검색 결과 전달
+        user=current_user,
+        keyword=keyword  # 템플릿에서 검색어 재사용
+    )
 
 # 프로필 페이지: bio 업데이트 가능
 @app.route('/profile', methods=['GET', 'POST'])
