@@ -3,6 +3,6 @@
 {% block content %}
 <h2>{{ product.title }}</h2>
 <p>{{ product.description }}</p>
-<p>가격: {{ product.price }}</p>
+<p>가격: {{ product.price|comma }}원</p>
 <p>판매자: <a href="{{ url_for('view_user_profile', user_id=seller.id) }}">{{ seller.username }}</a></p>
 {% endblock %}

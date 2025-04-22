@@ -15,7 +15,7 @@
   {% for product in products %}
     <li>
       <a href="{{ url_for('view_product', product_id=product.id) }}">{{ product.title }}</a>
-      - 가격: {{ product.price }}
+      - 가격: {{ product.price|comma }}원
     </li>
   {% endfor %}
 </ul>

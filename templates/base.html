@@ -105,7 +105,7 @@
           충전하기
         </button>
       </form>
-      <span style="white-space: nowrap; font-size: 14px;">보유 금액: {{ user.cash }}원</span>
+      <span style="white-space: nowrap; font-size: 14px;">보유 금액: {{ user.cash|comma }}원</span>
     </div>
     {% endif %}
   </nav>

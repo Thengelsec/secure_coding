@@ -294,6 +294,14 @@ def handle_send_message_event(data):
     data['message_id'] = str(uuid.uuid4())
     send(data, broadcast=True)
 
+# 포인트 , 표기 필터
+@app.template_filter('comma')
+def comma_format(value):
+    try:
+        return f"{int(value):,}"
+    except (ValueError, TypeError):
+        return value
+
 if __name__ == '__main__':
     init_db()  # 앱 컨텍스트 내에서 테이블 생성
     socketio.run(app, debug=True)
