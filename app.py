@@ -34,7 +34,9 @@ def init_db():
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
                 bio TEXT,
-                cash INTEGER DEFAULT 0 
+                cash INTEGER DEFAULT 0,
+                ban INTEGER DEFAULT 0,
+                is_admin INTEGER DEFAULT 0
             )
         """)
         # 상품 테이블 생성
@@ -58,14 +60,17 @@ def init_db():
         """)
         db.commit()
 
-# 전체 페이지 user 관리
+# 전체 페이지 user 정보 관리
 @app.before_request
 def load_user():
     g.user = None
     if 'user_id' in session:
         db = get_db()
         cursor = db.cursor()
-        cursor.execute("SELECT id, username, bio, cash FROM user WHERE id = ?", (session['user_id'],))
+        cursor.execute("""
+            SELECT id, username, bio, cash, ban, is_admin
+            FROM user WHERE id = ?
+        """, (session['user_id'],))
         g.user = cursor.fetchone()
 
 # 템플릿 user 자동 사용
@@ -112,6 +117,9 @@ def login():
         cursor.execute("SELECT * FROM user WHERE username = ? AND password = ?", (username, password))
         user = cursor.fetchone()
         if user:
+            if user['ban'] == 1:
+                flash('정지된 계정입니다.')
+                return redirect(url_for('login'))
             session['user_id'] = user['id']
             flash('로그인 성공!')
             return redirect(url_for('dashboard'))
@@ -228,10 +236,23 @@ def view_product(product_id):
     # 판매자 정보 조회
     cursor.execute("SELECT * FROM user WHERE id = ?", (product['seller_id'],))
     seller = cursor.fetchone()
+
+    # 관리자 신고 목록 조회
+    reports = []
+    if g.user and g.user['is_admin'] == 1:
+        cursor.execute("""
+            SELECT report.id, report.reason, report.reporter_id, user.username 
+            FROM report
+            JOIN user ON report.reporter_id = user.id
+            WHERE report.target_id = ?
+        """, (product_id,))
+        reports = cursor.fetchall()
+
     return render_template(
         'view_product.html', 
         product=product, 
-        seller=seller
+        seller=seller,
+        reports=reports
     )
 
 # 포인트 충전하기
@@ -255,7 +276,7 @@ def charge():
 
     return render_template('charge.html')
 
-# 테스트용: 로그인한 사용자의 cash를 0으로 초기화 (나중에 삭제)
+# 테스트용: 로그인한 사용자의 cash를 0으로 초기화 (나중에 삭제)#################
 @app.route('/reset_cash')
 def reset_cash():  # test
     if 'user_id' not in session:
@@ -293,6 +314,124 @@ def report():
 def handle_send_message_event(data):
     data['message_id'] = str(uuid.uuid4())
     send(data, broadcast=True)
+
+# 관리자 페이지
+@app.route('/admin')
+def admin_page():
+    if not g.user or g.user['is_admin'] != 1:
+        abort(403)
+
+    db = get_db()
+    cursor = db.cursor()
+
+    keyword = request.args.get('q', '').strip()
+    results = []
+
+    if keyword:
+        like = f"%{keyword}%"
+        # 사용자 검색
+        cursor.execute("SELECT id, username FROM user WHERE username LIKE ?", (like,))
+        for u in cursor.fetchall():
+            results.append({'type': 'User', 'id': u['id'], 'label': u['username']})
+        # 상품 검색
+        cursor.execute("SELECT id, title FROM product WHERE title LIKE ?", (like,))
+        for p in cursor.fetchall():
+            results.append({'type': 'Product', 'id': p['id'], 'label': p['title']})
+    else:
+        # 검색어 없으면 전체 목록
+        cursor.execute("SELECT id, username FROM user")
+        for u in cursor.fetchall():
+            results.append({'type': 'User', 'id': u['id'], 'label': u['username']})
+        cursor.execute("SELECT id, title FROM product")
+        for p in cursor.fetchall():
+            results.append({'type': 'Product', 'id': p['id'], 'label': p['title']})
+
+
+    cursor.execute("""
+        SELECT report.target_id, product.title, COUNT(*) AS report_count
+        FROM report
+        JOIN product ON report.target_id = product.id
+        GROUP BY report.target_id
+    """)
+    report_summary = cursor.fetchall()
+
+    return render_template(
+        "admin.html",
+        keyword=keyword,
+        results=results,
+        report_summary=report_summary
+    )
+
+# 관리자용 상품 페이지 삭제
+@app.route('/admin/delete_product/<product_id>', methods=['POST'])
+def delete_product(product_id):
+    if not g.user or g.user['is_admin'] != 1:
+        abort(403)
+    db = get_db()
+    cursor = db.cursor()
+
+    # 신고 먼저 삭제
+    cursor.execute("DELETE FROM report WHERE target_id = ?", (product_id,))
+    
+    # 상품 삭제
+    cursor.execute("DELETE FROM product WHERE id = ?", (product_id,))
+    
+    db.commit()
+    flash("상품과 해당 상품의 신고 내역이 모두 삭제되었습니다.")
+    return redirect(url_for('admin_page'))
+
+# 관리자용 유저 정지
+@app.route('/admin/ban_user/<user_id>', methods=['POST'])
+def ban_user(user_id):
+    if not g.user or g.user['is_admin'] != 1:
+        abort(403)
+    if user_id == g.user['id']:
+        flash("자기 자신은 정지할 수 없습니다.")
+        return redirect(url_for('admin_page'))
+
+    db = get_db()
+    cursor = db.cursor()
+
+    # 정지 처리
+    cursor.execute("UPDATE user SET ban = 1 WHERE id = ?", (user_id,))
+    db.commit()
+
+    # 정지 대상이 현재 로그인 중이면 세션 제거 (강제 로그아웃)
+    if session.get('user_id') == user_id:
+        session.pop('user_id', None)
+
+    flash("사용자가 정지되었습니다.")
+    return redirect(url_for('admin_page'))
+
+# 관리자용 신고 삭제
+@app.route('/admin/delete_report/<report_id>', methods=['POST'])
+def delete_report(report_id):
+    if not g.user or g.user['is_admin'] != 1:
+        abort(403)
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM report WHERE id = ?", (report_id,))
+    db.commit()
+    flash("신고가 삭제되었습니다.")
+    return redirect(request.referrer or url_for('admin_page'))
+
+# 테스트용 관리자 변경 나중에 삭제###########################################
+@app.route('/make_admin')
+def make_admin():
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT is_admin FROM user WHERE username = 'admin'")
+    user = cursor.fetchone()
+
+    if not user:
+        return "admin 계정을 찾을 수 없습니다."
+
+    new_status = 0 if user['is_admin'] == 1 else 1
+    cursor.execute("UPDATE user SET is_admin = ? WHERE username = 'admin'", (new_status,))
+    db.commit()
+
+    status = "관리자 권한 부여됨 ✅" if new_status == 1 else "일반 사용자로 전환됨 ⚠️"
+    return f"admin 계정: {status}"
 
 # 포인트 , 표기 필터
 @app.template_filter('comma')

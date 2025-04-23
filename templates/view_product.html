@@ -3,6 +3,24 @@
 {% block content %}
 <h2>{{ product.title }}</h2>
 <p>{{ product.description }}</p>
+<p>상품 ID: <code>{{ product.id }}</code></p>
 <p>가격: {{ product.price|comma }}원</p>
 <p>판매자: <a href="{{ url_for('view_user_profile', user_id=seller.id) }}">{{ seller.username }}</a></p>
+<p>Debug → is_admin={{ is_admin }}, reports 개수={{ reports|length }}</p>
+<p>reports raw: <pre>{{ reports }}</pre></p>
+{% if user and user['is_admin'] == 1 and reports %}
+  <h4>📢 신고 내역</h4>
+  <ul>
+    {% for r in reports %}
+      <li>
+        <strong>신고자:</strong> {{ r['username'] }}<br>
+        <strong>사유:</strong> {{ r['reason'] }}<br>
+        <form action="{{ url_for('delete_report', report_id=r['id']) }}" method="post">
+          <button type="submit">삭제</button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}
+
 {% endblock %}

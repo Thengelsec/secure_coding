@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}관리자 대시보드{% endblock %}
+{% block content %}
+  <h2>관리자 대시보드</h2>
+
+  <!-- 검색 폼 -->
+  <form method="get" action="{{ url_for('admin_page') }}">
+    <input type="text" name="q"
+           placeholder="사용자명 또는 상품명 검색"
+           value="{{ keyword }}">
+    <button type="submit">검색</button>
+  </form>
+
+  <!-- 검색 결과 -->
+  <h3>검색 결과</h3>
+  {% if results %}
+    <ul>
+      {% for r in results %}
+        <li>
+          {% if r.type == 'User' %}
+            [User]
+            <a href="{{ url_for('view_user_profile', user_id=r.id) }}">
+              {{ r.label }}
+            </a>
+          {% else %}
+            [Product]
+            <a href="{{ url_for('view_product', product_id=r.id) }}">
+              {{ r.label }}
+            </a>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>검색 결과가 없습니다.</p>
+  {% endif %}
+
+  <!-- 기존 신고 요약 -->
+  <h3>신고 요약</h3>
+  {% if report_summary %}
+    <ul>
+      {% for r in report_summary %}
+        <li>
+          상품 ID: {{ r.title  }} — 신고 {{ r.report_count }}건
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>접수된 신고가 없습니다.</p>
+  {% endif %}
+{% endblock %}
