@@ -1,6 +1,6 @@
 import sqlite3
 import uuid
-from flask import Flask, render_template, request, redirect, url_for, session, flash, g
+from flask import Flask, render_template, request, redirect, url_for, session, flash, g, abort
 from flask_socketio import SocketIO, send
 
 app = Flask(__name__)
@@ -294,18 +294,46 @@ def reset_cash():  # test
 def report():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    
     if request.method == 'POST':
         target_id = request.form['target_id']
         reason = request.form['reason']
+        report_id = str(uuid.uuid4())
+
         db = get_db()
         cursor = db.cursor()
-        report_id = str(uuid.uuid4())
-        cursor.execute(
-            "INSERT INTO report (id, reporter_id, target_id, reason) VALUES (?, ?, ?, ?)",
-            (report_id, session['user_id'], target_id, reason)
-        )
-        db.commit()
-        flash('신고가 접수되었습니다.')
+
+        # 기존 신고 확인
+        cursor.execute("""
+            SELECT id FROM report
+            WHERE reporter_id = ? AND target_id = ?
+        """, (session['user_id'], target_id))
+        existing = cursor.fetchone()
+
+        if existing and request.form.get('confirm') != '1':
+            return render_template(
+                'report.html', 
+                target_id=target_id, 
+                reason=reason, 
+                existing=True
+            )
+        
+        if existing:
+            # 기존 신고가 있으면 내용 업데이트
+            cursor.execute("""
+                UPDATE report
+                SET reason = ?
+                WHERE id = ?
+            """, (reason, existing['id']))
+            db.commit()
+            flash('기존 신고 내용이 수정되었습니다.')
+        else:
+            cursor.execute(
+                "INSERT INTO report (id, reporter_id, target_id, reason) VALUES (?, ?, ?, ?)",
+                (report_id, session['user_id'], target_id, reason)
+            )
+            db.commit()
+            flash('신고가 접수되었습니다.')
         return redirect(url_for('dashboard'))
     return render_template('report.html')
 

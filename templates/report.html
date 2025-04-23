@@ -3,9 +3,17 @@
 {% block content %}
 <h2>신고하기</h2>
 <form method="post">
-  신고 대상 (사용자ID 또는 상품ID): <input type="text" name="target_id" required><br>
-  신고 사유: <br>
-  <textarea name="reason" rows="4" cols="50" required></textarea><br>
-  <button type="submit">신고 접수</button>
+  신고 대상 (사용자ID 또는 상품ID):
+  <input type="text" name="target_id" required value="{{ target_id or '' }}"><br>
+  신고 사유:<br>
+  <textarea name="reason" rows="4" cols="50" required>{{ reason or '' }}</textarea><br>
+
+  {% if existing %}
+    <p style="color: red;">이미 신고한 이력이 있습니다. 수정하시겠습니까?</p>
+    <input type="hidden" name="confirm" value="1">
+    <button type="submit">신고 수정</button>
+  {% else %}
+    <button type="submit">신고 접수</button>
+  {% endif %}
 </form>
 {% endblock %}
