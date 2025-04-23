@@ -1,0 +1,4 @@
+echo "secure_coding_checklist.csv" >> .gitignore
+echo "secure-coding-slide.v2.pdf" >> .gitignore
+echo "enviroments.yaml" >> .gitignore
+echo "market.db" >> .gitignore
