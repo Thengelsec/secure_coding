@@ -9,6 +9,12 @@
 <p>Debug → is_admin={{ is_admin }}, reports 개수={{ reports|length }}</p>
 <p>reports raw: <pre>{{ reports }}</pre></p>
 
+{% if user and user['id'] != product.seller_id %}
+  <form method="post" action="{{ url_for('buy_product', product_id=product.id) }}">
+    <button type="submit" onclick="return confirm('구매하시겠습니까?')">💰 구매하기</button>
+  </form>
+{% endif %}
+
 {% if user and (user['is_admin'] == 1 or user['id'] == product.seller_id) %}
   <form method="post" action="{{ url_for('delete_product', product_id=product.id) }}">
     <button type="submit" onclick="return confirm('상품을 삭제하시겠습니까?')">상품 삭제</button>

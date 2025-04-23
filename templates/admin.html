@@ -48,4 +48,41 @@
   {% else %}
     <p>접수된 신고가 없습니다.</p>
   {% endif %}
+
+  <h3>거래 내역</h3>
+  <!-- 거래 검색 폼 -->
+<form method="get" action="{{ url_for('admin_page') }}">
+  <input type="text" name="purchase_q"
+         placeholder="상품명, 구매자, 판매자 검색"
+         value="{{ purchase_keyword }}">
+  <button type="submit">검색</button>
+</form>
+{% if purchase_history %}
+  <table border="1" cellspacing="0" cellpadding="5">
+    <tr>
+      <th>상품명</th>
+      <th>가격</th>
+      <th>구매자</th>
+      <th>판매자</th>
+      <th>시간</th>
+      <th>삭제</th>
+    </tr>
+    {% for p in purchase_history %}
+    <tr>
+      <td>{{ p.product_title }}</td>
+      <td>{{ p.product_price|comma }}원</td>
+      <td>{{ p.buyer }}</td>
+      <td>{{ p.seller }}</td>
+      <td>{{ p.purchased_at }}</td>
+      <td>
+        <form method="post" action="{{ url_for('delete_purchase', purchase_id=p.id) }}">
+          <button type="submit" onclick="return confirm('이 거래 기록을 삭제하시겠습니까?')">삭제</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+{% else %}
+  <p>거래 기록이 없습니다.</p>
+{% endif %}
 {% endblock %}

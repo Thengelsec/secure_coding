@@ -8,4 +8,27 @@
   <textarea name="bio" rows="4" cols="50">{{ user.bio or '' }}</textarea><br>
   <button type="submit">프로필 업데이트</button>
 </form>
+
+<h3>🛍 구매 내역</h3>
+{% if purchases %}
+  <ul>
+    {% for p in purchases %}
+      <li>{{ p.product_title }} - {{ p.product_price|comma }}원 ({{ p.purchased_at }})</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>구매한 내역이 없습니다.</p>
+{% endif %}
+
+<h3>📦 판매 내역</h3>
+{% if sales %}
+  <ul>
+    {% for s in sales %}
+      <li>{{ s.product_title }} - {{ s.product_price|comma }}원 ({{ s.purchased_at }})</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>판매한 내역이 없습니다.</p>
+{% endif %}
+
 {% endblock %}

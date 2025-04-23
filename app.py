@@ -2,6 +2,7 @@ import sqlite3
 import uuid
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g, abort
 from flask_socketio import SocketIO, send
+from datetime import datetime
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -58,6 +59,20 @@ def init_db():
                 reason TEXT NOT NULL
             )
         """)
+
+        # 구매기록 테이블 생성
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS purchase (
+                id TEXT PRIMARY KEY,
+                buyer_id TEXT NOT NULL,
+                product_id TEXT NOT NULL,
+                product_title TEXT NOT NULL,
+                product_price TEXT NOT NULL,
+                seller_id TEXT NOT NULL,
+                purchased_at TEXT NOT NULL
+            )
+        """)
+
         db.commit()
 
 # 전체 페이지 user 정보 관리
@@ -176,17 +191,40 @@ def dashboard():
 def profile():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    
     db = get_db()
     cursor = db.cursor()
+
     if request.method == 'POST':
         bio = request.form.get('bio', '')
         cursor.execute("UPDATE user SET bio = ? WHERE id = ?", (bio, session['user_id']))
         db.commit()
         flash('프로필이 업데이트되었습니다.')
         return redirect(url_for('profile'))
+    
     cursor.execute("SELECT * FROM user WHERE id = ?", (session['user_id'],))
     current_user = cursor.fetchone()
-    return render_template('profile.html')
+    
+    cursor.execute("""
+        SELECT * FROM purchase
+        WHERE buyer_id = ?
+        ORDER BY purchased_at DESC
+    """, (session['user_id'],))
+    purchases = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT * FROM purchase
+        WHERE seller_id = ?
+        ORDER BY purchased_at DESC
+    """, (session['user_id'],))
+    sales = cursor.fetchall()
+
+    return render_template(
+        'profile.html',
+        current_user=current_user,
+        purchases=purchases,
+        sales=sales
+    )
 
 # 프로필 뷰어 페이지
 @app.route('/user/<user_id>')
@@ -275,6 +313,83 @@ def charge():
     current_user = cursor.fetchone()
 
     return render_template('charge.html')
+
+# 상품 구매하기
+@app.route('/buy/<product_id>', methods=['POST'])
+def buy_product(product_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.cursor()
+
+    # 상품 정보 조회
+    cursor.execute("SELECT * FROM product WHERE id = ?", (product_id,))
+    product = cursor.fetchone()
+
+    if not product:
+        flash("상품을 찾을 수 없습니다.")
+        return redirect(url_for('dashboard'))
+
+    # 자기 자신의 상품은 구매 불가
+    if product['seller_id'] == session['user_id']:
+        flash("자신의 상품은 구매할 수 없습니다.")
+        return redirect(url_for('view_product', product_id=product_id))
+
+    # 구매자 정보 조회
+    cursor.execute("SELECT cash FROM user WHERE id = ?", (session['user_id'],))
+    buyer = cursor.fetchone()
+
+    if not buyer:
+        flash("사용자 정보를 찾을 수 없습니다.")
+        return redirect(url_for('dashboard'))
+
+    # 잔액 확인
+    price = int(product['price'])
+    if buyer['cash'] < price:
+        flash("보유 금액이 부족합니다.")
+        return redirect(url_for('view_product', product_id=product_id))
+
+    # 거래 처리
+    new_id = str(uuid.uuid4())
+    cursor.execute("""
+    INSERT INTO purchase (
+        id, buyer_id, product_id,
+        product_title, product_price,
+        seller_id, purchased_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        new_id,
+        session['user_id'],
+        product['id'],
+        product['title'],
+        product['price'],
+        product['seller_id'],
+        datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    ))
+
+    # 구매자 금액 차감
+    cursor.execute("""
+        UPDATE user SET cash = cash - ? WHERE id = ?
+        """, 
+        (price, session['user_id'])
+    )
+
+    # 판매자 금액 증가
+    cursor.execute("""
+        UPDATE user SET cash = cash + ? WHERE id = ?
+        """, (price, product['seller_id'])
+    )
+
+    cursor.execute("""
+        DELETE FROM product WHERE id = ?
+        """, 
+        (product_id,)
+    )
+
+    db.commit()
+    flash("상품이 성공적으로 구매되었습니다.")
+    return redirect(url_for('dashboard'))
 
 # 테스트용: 로그인한 사용자의 cash를 0으로 초기화 (나중에 삭제)#################
 @app.route('/reset_cash')
@@ -383,11 +498,43 @@ def admin_page():
     """)
     report_summary = cursor.fetchall()
 
+    cursor.execute("""
+        SELECT p.id, u1.username AS buyer, 
+        u2.username AS seller, p.product_title, 
+        p.product_price, p.purchased_at
+        FROM purchase p
+        JOIN user u1 ON p.buyer_id = u1.id
+        JOIN user u2 ON p.seller_id = u2.id
+        ORDER BY p.purchased_at DESC
+    """)
+    purchase_history = cursor.fetchall()
+
+    purchase_keyword = request.args.get('purchase_q', '').strip()
+    purchase_query = """
+        SELECT purchase.*, buyer.username AS buyer_name, seller.username AS seller_name
+        FROM purchase
+        JOIN user AS buyer ON purchase.buyer_id = buyer.id
+        JOIN user AS seller ON purchase.seller_id = seller.id
+    """
+    params = ()
+    if purchase_keyword:
+        purchase_query += """
+            WHERE product_title LIKE ? OR buyer.username LIKE ? OR seller.username LIKE ?
+        """
+        keyword_like = f"%{purchase_keyword}%"
+        params = (keyword_like, keyword_like, keyword_like)
+
+    purchase_query += " ORDER BY purchased_at DESC"
+    cursor.execute(purchase_query, params)
+    purchases = cursor.fetchall()
+
     return render_template(
         "admin.html",
         keyword=keyword,
         results=results,
-        report_summary=report_summary
+        report_summary=report_summary,
+        purchase_history=purchase_history,
+        purchase_keyword=purchase_keyword
     )
 
 # 관리자/본인 용 상품 페이지 삭제
@@ -426,6 +573,19 @@ def delete_report(report_id):
     db.commit()
     flash("신고가 삭제되었습니다.")
     return redirect(request.referrer or url_for('admin_page'))
+
+# 관리자용 거래내역 삭제
+@app.route('/admin/delete_purchase/<purchase_id>', methods=['POST'])
+def delete_purchase(purchase_id):
+    if not g.user or g.user['is_admin'] != 1:
+        abort(403)
+
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM purchase WHERE id = ?", (purchase_id,))
+    db.commit()
+    flash("거래 기록이 삭제되었습니다.")
+    return redirect(url_for('admin_page'))
 
 # 관리자용 사용자 정지
 @app.route('/admin/ban_user/<user_id>', methods=['POST'])
