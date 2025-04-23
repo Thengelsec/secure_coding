@@ -46,7 +46,7 @@ def init_db():
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 description TEXT NOT NULL,
-                price TEXT NOT NULL,
+                price INTEGER NOT NULL,
                 seller_id TEXT NOT NULL
             )
         """)
@@ -74,6 +74,22 @@ def init_db():
         """)
 
         db.commit()
+
+# 로그인 시에만 접근 가능
+@app.before_request
+def load_user():
+    g.user = None
+    if 'user_id' in session:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("""
+            SELECT id, username, bio, cash, ban, is_admin
+            FROM user WHERE id = ?
+        """, (session['user_id'],))
+        g.user = cursor.fetchone()
+    else:
+        if request.endpoint not in ('index', 'login', 'register', 'static'):
+            return redirect(url_for('login'))
 
 # 전체 페이지 user 정보 관리
 @app.before_request
@@ -237,8 +253,25 @@ def view_user_profile(user_id):
     if not user_profile:
         flash("사용자를 찾을 수 없습니다.")
         return redirect(url_for('dashboard'))
+    
+    received_reports = []
+    if g.user and g.user['is_admin'] == 1:
+        cursor.execute("""
+            SELECT 
+                report.id AS report_id,
+                report.reason, 
+                reporter.username AS reporter_name
+            FROM report
+            JOIN user AS reporter ON report.reporter_id = reporter.id
+            WHERE report.target_id = ?
+        """, (user_id,))
+        received_reports = cursor.fetchall()
 
-    return render_template('view_profile.html', target_user=user_profile)
+    return render_template(
+        'view_profile.html', 
+        target_user=user_profile,
+        received_reports=received_reports
+    )
 
 # 상품 등록
 @app.route('/product/new', methods=['GET', 'POST'])
@@ -248,7 +281,7 @@ def new_product():
     if request.method == 'POST':
         title = request.form['title']
         description = request.form['description']
-        price = request.form['price']
+        price = int(request.form['price'])
         db = get_db()
         cursor = db.cursor()
         product_id = str(uuid.uuid4())
@@ -303,7 +336,15 @@ def charge():
     cursor = db.cursor()
 
     if request.method == 'POST':
-        amount = int(request.form['amount'])
+        try:
+            amount = int(request.form['amount'])
+            if amount <= 0 or amount % 10000 != 0:
+                flash("충전 금액은 1원 이상이어야 합니다.")
+                return redirect(url_for('charge'))
+        except ValueError:
+            flash("유효한 숫자를 입력해주세요.")
+            return redirect(url_for('charge'))
+
         cursor.execute("UPDATE user SET cash = cash + ? WHERE id = ?", (amount, session['user_id']))
         db.commit()
         flash(f'{amount}원 충전되었습니다.')
@@ -409,47 +450,55 @@ def reset_cash():  # test
 def report():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
+
+    db = get_db()
+    cursor = db.cursor()
+
     if request.method == 'POST':
-        target_id = request.form['target_id']
+        target_input = request.form['target_id'].strip()
         reason = request.form['reason']
         report_id = str(uuid.uuid4())
+        target_id = None
 
-        db = get_db()
-        cursor = db.cursor()
+        # 1. 상품 ID로 조회
+        cursor.execute("SELECT id FROM product WHERE id = ?", (target_input,))
+        product = cursor.fetchone()
+        if product:
+            target_id = product['id']
+        else:
+            # 2. 사용자 이름으로 조회
+            cursor.execute("SELECT id FROM user WHERE username = ?", (target_input,))
+            user = cursor.fetchone()
+            if user:
+                target_id = user['id']
 
-        # 기존 신고 확인
-        cursor.execute("""
-            SELECT id FROM report
-            WHERE reporter_id = ? AND target_id = ?
-        """, (session['user_id'], target_id))
+        if not target_id:
+            flash("해당 사용자명 또는 상품ID가 존재하지 않습니다.")
+            return redirect(url_for('report'))
+
+        # 3. 기존 신고 여부
+        cursor.execute("SELECT id FROM report WHERE reporter_id = ? AND target_id = ?", (session['user_id'], target_id))
         existing = cursor.fetchone()
 
         if existing and request.form.get('confirm') != '1':
             return render_template(
-                'report.html', 
-                target_id=target_id, 
-                reason=reason, 
+                'report.html',
+                target_id=target_input,
+                reason=reason,
                 existing=True
             )
-        
+
         if existing:
-            # 기존 신고가 있으면 내용 업데이트
-            cursor.execute("""
-                UPDATE report
-                SET reason = ?
-                WHERE id = ?
-            """, (reason, existing['id']))
-            db.commit()
-            flash('기존 신고 내용이 수정되었습니다.')
+            cursor.execute("UPDATE report SET reason = ? WHERE id = ?", (reason, existing['id']))
+            flash("기존 신고 내용이 수정되었습니다.")
         else:
-            cursor.execute(
-                "INSERT INTO report (id, reporter_id, target_id, reason) VALUES (?, ?, ?, ?)",
-                (report_id, session['user_id'], target_id, reason)
-            )
-            db.commit()
-            flash('신고가 접수되었습니다.')
+            cursor.execute("INSERT INTO report (id, reporter_id, target_id, reason) VALUES (?, ?, ?, ?)",
+                           (report_id, session['user_id'], target_id, reason))
+            flash("신고가 접수되었습니다.")
+
+        db.commit()
         return redirect(url_for('dashboard'))
+
     return render_template('report.html')
 
 # 실시간 채팅: 클라이언트가 메시지를 보내면 전체 브로드캐스트
@@ -491,9 +540,18 @@ def admin_page():
 
 
     cursor.execute("""
-        SELECT report.target_id, product.title, COUNT(*) AS report_count
+        SELECT 
+            report.target_id,
+            COALESCE(product.title, user.username) AS title,
+            CASE
+                WHEN product.title IS NOT NULL THEN '상품'
+                WHEN user.username IS NOT NULL THEN '사용자'
+                ELSE '알 수 없음'
+            END AS target_type,
+            COUNT(*) AS report_count
         FROM report
-        JOIN product ON report.target_id = product.id
+        LEFT JOIN product ON report.target_id = product.id
+        LEFT JOIN user ON report.target_id = user.id
         GROUP BY report.target_id
     """)
     report_summary = cursor.fetchall()

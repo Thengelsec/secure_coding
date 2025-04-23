@@ -35,13 +35,12 @@
     <p>검색 결과가 없습니다.</p>
   {% endif %}
 
-  <!-- 기존 신고 요약 -->
   <h3>신고 요약</h3>
   {% if report_summary %}
     <ul>
       {% for r in report_summary %}
         <li>
-          상품 ID: {{ r.title  }} — 신고 {{ r.report_count }}건
+          [{{ r.target_type }}] {{ r.title or r.target_id }} — 신고 {{ r.report_count }}건
         </li>
       {% endfor %}
     </ul>

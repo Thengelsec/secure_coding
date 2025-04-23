@@ -5,6 +5,19 @@
 <p>사용자명: {{ user.username }}</p>
 <p>소개글:</p>
 <p style="white-space: pre-line;">{{ user.bio or '소개글이 없습니다.' }}</p>
+{% if received_reports %}
+  <h4>신고 기록</h4>
+  <ul>
+    {% for r in received_reports %}
+      <li>
+        <strong>{{ r.reporter_name }}</strong> 님이 신고: "{{ r.reason }}"
+        <form method="post" action="{{ url_for('delete_report', report_id=r.report_id) }}" style="display:inline;">
+          <button type="submit" onclick="return confirm('이 신고를 삭제하시겠습니까?')">삭제</button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}
 {% if user and user['is_admin'] == 1 and user['id'] != target_user.id %}
   {% if target_user.ban == 1 %}
     <form method="post" action="{{ url_for('unban_user', user_id=target_user.id) }}">
