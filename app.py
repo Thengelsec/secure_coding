@@ -200,7 +200,7 @@ def view_user_profile(user_id):
         flash("사용자를 찾을 수 없습니다.")
         return redirect(url_for('dashboard'))
 
-    return render_template('view_profile.html', user=user_profile)
+    return render_template('view_profile.html', target_user=user_profile)
 
 # 상품 등록
 @app.route('/product/new', methods=['GET', 'POST'])
@@ -362,46 +362,30 @@ def admin_page():
         report_summary=report_summary
     )
 
-# 관리자용 상품 페이지 삭제
+# 관리자/본인 용 상품 페이지 삭제
 @app.route('/admin/delete_product/<product_id>', methods=['POST'])
 def delete_product(product_id):
-    if not g.user or g.user['is_admin'] != 1:
+    if not g.user:
         abort(403)
+
     db = get_db()
     cursor = db.cursor()
 
-    # 신고 먼저 삭제
+    # 관리자이거나 해당 상품의 게시자만 삭제 가능
+    cursor.execute("SELECT seller_id FROM product WHERE id = ?", (product_id,))
+    product = cursor.fetchone()
+    if not product:
+        flash("상품이 존재하지 않습니다.")
+        return redirect(url_for('dashboard'))
+
+    if g.user['is_admin'] != 1 and g.user['id'] != product['seller_id']:
+        abort(403)
+
     cursor.execute("DELETE FROM report WHERE target_id = ?", (product_id,))
-    
-    # 상품 삭제
     cursor.execute("DELETE FROM product WHERE id = ?", (product_id,))
-    
     db.commit()
-    flash("상품과 해당 상품의 신고 내역이 모두 삭제되었습니다.")
-    return redirect(url_for('admin_page'))
-
-# 관리자용 유저 정지
-@app.route('/admin/ban_user/<user_id>', methods=['POST'])
-def ban_user(user_id):
-    if not g.user or g.user['is_admin'] != 1:
-        abort(403)
-    if user_id == g.user['id']:
-        flash("자기 자신은 정지할 수 없습니다.")
-        return redirect(url_for('admin_page'))
-
-    db = get_db()
-    cursor = db.cursor()
-
-    # 정지 처리
-    cursor.execute("UPDATE user SET ban = 1 WHERE id = ?", (user_id,))
-    db.commit()
-
-    # 정지 대상이 현재 로그인 중이면 세션 제거 (강제 로그아웃)
-    if session.get('user_id') == user_id:
-        session.pop('user_id', None)
-
-    flash("사용자가 정지되었습니다.")
-    return redirect(url_for('admin_page'))
+    flash("상품 및 신고 내역이 삭제되었습니다.")
+    return redirect(url_for('dashboard'))
 
 # 관리자용 신고 삭제
 @app.route('/admin/delete_report/<report_id>', methods=['POST'])
@@ -413,6 +397,35 @@ def delete_report(report_id):
     cursor.execute("DELETE FROM report WHERE id = ?", (report_id,))
     db.commit()
     flash("신고가 삭제되었습니다.")
+    return redirect(request.referrer or url_for('admin_page'))
+
+# 관리자용 사용자 정지
+@app.route('/admin/ban_user/<user_id>', methods=['POST'])
+def ban_user(user_id):
+    if not g.user or g.user['is_admin'] != 1:
+        abort(403)
+
+    if user_id == g.user['id']:
+        flash("자기 자신은 정지할 수 없습니다.")
+        return redirect(url_for('admin_page'))
+
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("UPDATE user SET ban = 1 WHERE id = ?", (user_id,))
+    db.commit()
+    flash("사용자가 정지되었습니다.")
+    return redirect(url_for('view_user_profile', user_id=user_id))
+
+# 관리자용 사용자 정지 해제
+@app.route('/admin/unban_user/<user_id>', methods=['POST'])
+def unban_user(user_id):
+    if not g.user or g.user['is_admin'] != 1:
+        abort(403)
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("UPDATE user SET ban = 0 WHERE id = ?", (user_id,))
+    db.commit()
+    flash("사용자 정지가 해제되었습니다.")
     return redirect(request.referrer or url_for('admin_page'))
 
 # 테스트용 관리자 변경 나중에 삭제###########################################
