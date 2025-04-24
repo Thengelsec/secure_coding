@@ -486,6 +486,19 @@ def report():
                            (report_id, session['user_id'], target_id, reason))
             flash("신고가 접수되었습니다.")
 
+        cursor.execute("SELECT COUNT(*) FROM report WHERE target_id = ?", (target_id,))
+        count = cursor.fetchone()[0]
+
+        if report_type == 'product' and count >= 10:
+            cursor.execute("DELETE FROM product WHERE id = ?", (target_id,))
+            cursor.execute("DELETE FROM report WHERE target_id = ?", (target_id,))
+            flash("신고 10회 초과로 인해 해당 상품이 삭제되었습니다.")
+
+        if report_type == 'user' and count >= 10:
+            cursor.execute("UPDATE user SET ban = 1 WHERE id = ?", (target_id,))
+            cursor.execute("DELETE FROM report WHERE target_id = ?", (target_id,))
+            flash("신고 10회 초과로 인해 해당 유저가 정지되었습니다.")
+
         db.commit()
         return redirect(url_for('dashboard'))
 
