@@ -8,7 +8,17 @@
   <textarea name="bio" rows="4" cols="50">{{ user.bio or '' }}</textarea><br>
   <button type="submit">프로필 업데이트</button>
 </form>
-
+<h3>🔐 <a href="{{ url_for('change_password') }}">비밀번호 변경하기</a></h3>
+<h3>📢 내가 등록한 상품</h3>
+{% if my_products %}
+  <ul>
+    {% for p in my_products %}
+      <li><a href="{{ url_for('view_product', product_id=p.id) }}">{{ p.title }}</a> - {{ p.price|comma }}원</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>등록한 상품이 없습니다.</p>
+{% endif %}
 <h3>🛍 구매 내역</h3>
 {% if purchases %}
   <ul>
@@ -19,7 +29,6 @@
 {% else %}
   <p>구매한 내역이 없습니다.</p>
 {% endif %}
-
 <h3>📦 판매 내역</h3>
 {% if sales %}
   <ul>

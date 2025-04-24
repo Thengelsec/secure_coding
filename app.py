@@ -181,6 +181,34 @@ def login():
             return redirect(url_for('login'))
     return render_template('login.html')
 
+# 비밀번호 변경
+@app.route('/change_password', methods=['GET', 'POST'])
+def change_password():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT password FROM user WHERE id = ?", (session['user_id'],))
+    user = cursor.fetchone()
+
+    if request.method == 'POST':
+        current_pw = request.form['current_password']
+        new_pw = request.form['new_password']
+        confirm_pw = request.form['confirm_password']
+
+        if current_pw != user['password']:
+            flash("현재 비밀번호가 일치하지 않습니다.")
+        elif new_pw != confirm_pw:
+            flash("새 비밀번호가 일치하지 않습니다.")
+        else:
+            cursor.execute("UPDATE user SET password = ? WHERE id = ?", (new_pw, session['user_id']))
+            db.commit()
+            flash("비밀번호가 변경되었습니다.")
+            return redirect(url_for('profile'))
+
+    return render_template("change_password.html")
+
 # 로그아웃
 @app.route('/logout')
 def logout():
@@ -250,11 +278,15 @@ def profile():
     """, (session['user_id'],))
     sales = cursor.fetchall()
 
+    cursor.execute("SELECT * FROM product WHERE seller_id = ?", (session['user_id'],))
+    my_products = cursor.fetchall()
+
     return render_template(
         'profile.html',
         current_user=current_user,
         purchases=purchases,
-        sales=sales
+        sales=sales,
+        my_products=my_products
     )
 
 # 프로필 뷰어 페이지
