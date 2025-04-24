@@ -87,22 +87,8 @@ def load_user():
             FROM user WHERE id = ?
         """, (session['user_id'],))
         g.user = cursor.fetchone()
-    else:
-        if request.endpoint not in ('index', 'login', 'register', 'static'):
-            return redirect(url_for('login'))
-
-# 전체 페이지 user 정보 관리
-@app.before_request
-def load_user():
-    g.user = None
-    if 'user_id' in session:
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("""
-            SELECT id, username, bio, cash, ban, is_admin
-            FROM user WHERE id = ?
-        """, (session['user_id'],))
-        g.user = cursor.fetchone()
+    elif request.endpoint not in ('index', 'login', 'register', 'static'):
+        return redirect(url_for('login'))
 
 # 템플릿 user 자동 사용
 @app.context_processor
@@ -169,13 +155,8 @@ def logout():
 # 대시보드: 사용자 정보와 전체 상품 리스트 표시
 @app.route('/dashboard')
 def dashboard():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     db = get_db()
     cursor = db.cursor()
-    # 현재 사용자 조회
-    cursor.execute("SELECT * FROM user WHERE id = ?", (session['user_id'],))
-    current_user = cursor.fetchone()
 
     # 검색기능
     keyword = request.args.get('word', '').strip()
@@ -205,8 +186,6 @@ def dashboard():
 # 프로필 페이지: bio 업데이트 가능
 @app.route('/profile', methods=['GET', 'POST'])
 def profile():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     
     db = get_db()
     cursor = db.cursor()
@@ -276,8 +255,6 @@ def view_user_profile(user_id):
 # 상품 등록
 @app.route('/product/new', methods=['GET', 'POST'])
 def new_product():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     if request.method == 'POST':
         title = request.form['title']
         description = request.form['description']
@@ -329,8 +306,6 @@ def view_product(product_id):
 # 포인트 충전하기
 @app.route('/charge', methods=['GET', 'POST'])
 def charge():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
 
     db = get_db()
     cursor = db.cursor()
@@ -358,8 +333,6 @@ def charge():
 # 상품 구매하기
 @app.route('/buy/<product_id>', methods=['POST'])
 def buy_product(product_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
 
     db = get_db()
     cursor = db.cursor()
@@ -435,8 +408,6 @@ def buy_product(product_id):
 # 테스트용: 로그인한 사용자의 cash를 0으로 초기화 (나중에 삭제)#################
 @app.route('/reset_cash')
 def reset_cash():  # test
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
 
     db = get_db()
     cursor = db.cursor()
@@ -448,8 +419,6 @@ def reset_cash():  # test
 # 신고하기
 @app.route('/report', methods=['GET', 'POST'])
 def report():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
 
     db = get_db()
     cursor = db.cursor()
