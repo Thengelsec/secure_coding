@@ -1,8 +1,10 @@
 import sqlite3
 import uuid
-from flask import Flask, render_template, request, redirect, url_for, session, flash, g, abort
+import os
+from flask import Flask, render_template, request, redirect, url_for, session, flash, g, abort, send_from_directory
 from flask_socketio import SocketIO, send, join_room, leave_room, emit
 from datetime import datetime
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -47,7 +49,8 @@ def init_db():
                 title TEXT NOT NULL,
                 description TEXT NOT NULL,
                 price INTEGER NOT NULL,
-                seller_id TEXT NOT NULL
+                seller_id TEXT NOT NULL,
+                image_path TEXT
             )
         """)
         # 신고 테이블 생성
@@ -96,6 +99,15 @@ def init_db():
 
         db.commit()
 
+# 업로드 관련
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
 # 로그인 시에만 접근 가능
 @app.before_request
 def load_user():
@@ -108,7 +120,10 @@ def load_user():
             FROM user WHERE id = ?
         """, (session['user_id'],))
         g.user = cursor.fetchone()
-    elif request.endpoint not in ('index', 'login', 'register', 'static'):
+    elif request.endpoint not in (
+        'index', 'login', 'register', 'static', 
+        'dashboard', 'view_product', 'uploaded_file'
+    ):
         return redirect(url_for('login'))
 
 # 템플릿 user 자동 사용
@@ -280,17 +295,38 @@ def new_product():
         title = request.form['title']
         description = request.form['description']
         price = int(request.form['price'])
+        seller_id = session['user_id']
+
+        image = request.files.get('image')
+        image_path = None
+
+        if image and allowed_file(image.filename):
+            filename = secure_filename(f"{uuid.uuid4()}_{image.filename}")
+            save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            image.save(save_path)
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+        product_id = str(uuid.uuid4())
         db = get_db()
         cursor = db.cursor()
-        product_id = str(uuid.uuid4())
         cursor.execute(
-            "INSERT INTO product (id, title, description, price, seller_id) VALUES (?, ?, ?, ?, ?)",
-            (product_id, title, description, price, session['user_id'])
+            "INSERT INTO product (id, title, description, price, seller_id, image_path) VALUES (?, ?, ?, ?, ?, ?)",
+            (product_id, title, description, price, seller_id, image_path)
         )
         db.commit()
         flash('상품이 등록되었습니다.')
         return redirect(url_for('dashboard'))
+
     return render_template('new_product.html')
+
+# 사진 업로드
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(
+        app.config['UPLOAD_FOLDER'], 
+        filename
+    )
 
 # 상품 상세보기
 @app.route('/product/<product_id>')
@@ -322,6 +358,57 @@ def view_product(product_id):
         product=product, 
         seller=seller,
         reports=reports
+    )
+
+# 상품 페이지 수정
+@app.route('/product/edit/<product_id>', methods=['GET', 'POST'])
+def edit_product(product_id):
+
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM product WHERE id = ?", (product_id,))
+    product = cursor.fetchone()
+
+    if not product or (product['seller_id'] != session['user_id'] and not g.user['is_admin']):
+        abort(403)
+
+    if request.method == 'POST':
+        title = request.form['title']
+        description = request.form['description']
+        price = int(request.form['price'])
+
+        old_image_path = product['image_path']
+        image = request.files.get('image')
+        image_path = old_image_path
+
+        if image and allowed_file(image.filename):
+            filename = secure_filename(f"{uuid.uuid4()}_{image.filename}")
+            save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            image.save(save_path)
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+            # 기존 이미지 삭제
+            if old_image_path and os.path.exists(old_image_path):
+                os.remove(old_image_path)
+
+        cursor.execute("""
+            UPDATE product SET title = ?, description = ?, price = ?, image_path = ?
+            WHERE id = ?
+        """, (title, description, price, image_path, product_id))
+        db.commit()
+
+        flash("상품 정보가 수정되었습니다.")
+        return redirect(
+            url_for(
+                'view_product', 
+                product_id=product_id
+            )
+        )
+
+    return render_template(
+        "edit_product.html", 
+        product=product
     )
 
 # 포인트 충전하기
@@ -756,6 +843,9 @@ def delete_product(product_id):
 
     if g.user['is_admin'] != 1 and g.user['id'] != product['seller_id']:
         abort(403)
+
+    if product['image_path'] and os.path.exists(product['image_path']):
+        os.remove(product['image_path'])
 
     cursor.execute("DELETE FROM report WHERE target_id = ?", (product_id,))
     cursor.execute("DELETE FROM product WHERE id = ?", (product_id,))

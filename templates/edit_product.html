@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}상품 수정{% endblock %}
+{% block content %}
+
+<h2>상품 수정</h2>
+
+<form method="POST" enctype="multipart/form-data">
+  <label>제목:</label><br>
+  <input type="text" name="title" value="{{ product.title }}"><br><br>
+
+  <label>설명:</label><br>
+  <textarea name="description">{{ product.description }}</textarea><br><br>
+
+  <label>가격:</label><br>
+  <input type="number" name="price" value="{{ product.price }}"><br><br>
+
+  {% if product.image_path %}
+    <p>현재 이미지:</p>
+    <img src="/{{ product.image_path }}" style="max-width:200px;"><br><br>
+  {% endif %}
+
+  <label>새 이미지 업로드:</label><br>
+  <input type="file" name="image"><br><br>
+
+  <button type="submit">수정 완료</button>
+</form>
+
+{% endblock %}
