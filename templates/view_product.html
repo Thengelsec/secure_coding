@@ -10,6 +10,12 @@
 <p>reports raw: <pre>{{ reports }}</pre></p>
 
 {% if user and user['id'] != product.seller_id %}
+  <form method="get" action="{{ url_for('start_chat', product_id=product.id) }}">
+    <button type="submit">💬 채팅하기</button>
+  </form>
+{% endif %}
+
+{% if user and user['id'] != product.seller_id %}
   <form method="post" action="{{ url_for('buy_product', product_id=product.id) }}">
     <button type="submit" onclick="return confirm('구매하시겠습니까?')">💰 구매하기</button>
   </form>

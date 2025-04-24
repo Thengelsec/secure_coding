@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}채팅방{% endblock %}
+{% block content %}
+
+<h2>1:1 채팅</h2>
+
+<div id="chat_box" style="height:300px; overflow-y:scroll; border:1px solid #ccc; padding:10px;">
+    {% for m in messages %}
+      <p><strong>{{ '나' if m.sender_id == user_id else '상대방' }}</strong>: {{ m.message }}</p>
+    {% endfor %}
+  </div>
+
+<input id="msg_input" type="text" placeholder="메시지를 입력하세요" autocomplete="off">
+<button id="send_btn">전송</button>
+
+<script>
+  const socket = io();
+  const roomId = "{{ room.id }}";
+  const senderId = "{{ user_id }}";
+
+  // 방 입장
+  socket.on("connect", () => {
+    socket.emit("join_room", { room: roomId });
+  });
+
+  // 중복 방지를 위해 등록 전에 제거
+  socket.off("receive_message");
+  socket.on("receive_message", (data) => {
+    const box = document.getElementById("chat_box");
+    const msg = document.createElement("p");
+    const who = (data.sender_id.toString() === senderId.toString()) ? "나" : "상대방";
+    msg.innerHTML = `<strong>${who}</strong>: ${data.message}`;
+    box.appendChild(msg);
+    box.scrollTop = box.scrollHeight;
+  });
+
+  // 메시지 전송
+  document.getElementById("send_btn").addEventListener("click", () => {
+    const input = document.getElementById("msg_input");
+    const msg = input.value.trim();
+    if (!msg) return;
+
+    socket.emit("send_private", {
+      room: roomId,
+      sender_id: senderId,
+      message: msg
+    });
+
+    input.value = "";
+  });
+</script>
+
+{% endblock %}

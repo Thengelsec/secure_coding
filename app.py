@@ -1,7 +1,7 @@
 import sqlite3
 import uuid
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g, abort
-from flask_socketio import SocketIO, send
+from flask_socketio import SocketIO, send, join_room, leave_room, emit
 from datetime import datetime
 
 app = Flask(__name__)
@@ -70,6 +70,27 @@ def init_db():
                 product_price TEXT NOT NULL,
                 seller_id TEXT NOT NULL,
                 purchased_at TEXT NOT NULL
+            )
+        """)
+
+        # 채팅방 테이블
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat_room (
+                id TEXT PRIMARY KEY,
+                buyer_id TEXT NOT NULL,
+                seller_id TEXT NOT NULL,
+                product_id TEXT NOT NULL
+            )
+        """)
+
+        # 채팅 메시지 테이블
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat_message (
+                id TEXT PRIMARY KEY,
+                room_id TEXT NOT NULL,
+                sender_id TEXT NOT NULL,
+                message TEXT NOT NULL,
+                sent_at TEXT NOT NULL
             )
         """)
 
@@ -475,6 +496,146 @@ def report():
 def handle_send_message_event(data):
     data['message_id'] = str(uuid.uuid4())
     send(data, broadcast=True)
+
+# 채팅방 입장
+@socketio.on('join_room')
+def on_join(data):
+    room = data.get('room')
+    if room:
+        join_room(room)
+        print(f"[채팅방 입장] room: {room}")
+
+# 1ㄷ1 채팅 기능
+@socketio.on('send_private')
+def on_private_message(data):
+    room = data.get('room')
+    sender_id = data.get('sender_id')
+    message = data.get('message')
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    if not room or not sender_id or not message:
+        print("[오류] 필수 값 누락:", data)
+        return
+
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("""
+        INSERT INTO chat_message (id, room_id, sender_id, message, sent_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (str(uuid.uuid4()), room, sender_id, message, timestamp))
+    db.commit()
+
+    emit('receive_message', {
+        'sender_id': sender_id,
+        'message': message,
+        'sent_at': timestamp
+    }, to=room)
+
+# 채팅방
+@app.route('/chat/<room_id>', endpoint='chat_room')
+def chat_room(room_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.cursor()
+
+    cursor.execute("SELECT * FROM chat_room WHERE id = ?", (room_id,))
+    room = cursor.fetchone()
+
+    if not room or session['user_id'] not in (room['buyer_id'], room['seller_id']):
+        abort(403)
+
+    cursor.execute("""
+        SELECT sender_id, message, sent_at FROM chat_message
+        WHERE room_id = ?
+        ORDER BY sent_at ASC
+    """, (room_id,))
+    messages = cursor.fetchall()
+
+    return render_template(
+        "chat_room.html",
+        room=room,
+        user_id=session['user_id'],
+        messages=messages
+    )
+
+# 상세페이지 채팅
+@app.route('/chat/start/<product_id>', endpoint='start_chat')
+def start_chat(product_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.cursor()
+
+    cursor.execute("SELECT seller_id FROM product WHERE id = ?", (product_id,))
+    product = cursor.fetchone()
+    if not product:
+        flash("상품을 찾을 수 없습니다.")
+        return redirect(url_for('dashboard'))
+
+    buyer_id = session['user_id']
+    seller_id = product['seller_id']
+
+    if buyer_id == seller_id:
+        flash("자신과는 채팅할 수 없습니다.")
+        return redirect(url_for('view_product', product_id=product_id))
+
+    cursor.execute("""
+        SELECT id FROM chat_room
+        WHERE buyer_id = ? AND seller_id = ? AND product_id = ?
+    """, (buyer_id, seller_id, product_id))
+    room = cursor.fetchone()
+
+    if room:
+        room_id = room['id']
+    else:
+        room_id = str(uuid.uuid4())
+        cursor.execute("""
+            INSERT INTO chat_room (id, buyer_id, seller_id, product_id)
+            VALUES (?, ?, ?, ?)
+        """, (room_id, buyer_id, seller_id, product_id))
+        db.commit()
+
+    return redirect(url_for('chat_room', room_id=room_id))
+
+# 판매자 채팅
+@app.route('/chat/list')
+def chat_list():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+    db = get_db()
+    cursor = db.cursor()
+
+    cursor.execute("""
+        SELECT c.id, p.title AS product_title,
+               CASE
+                 WHEN c.buyer_id = ? THEN c.seller_id
+                 ELSE c.buyer_id
+               END AS other_user_id
+        FROM chat_room c
+        JOIN product p ON c.product_id = p.id
+        WHERE c.seller_id = ? OR c.buyer_id = ?
+    """, (user_id, user_id, user_id))
+
+    chat_rooms = cursor.fetchall()
+    chat_rooms_fixed = []
+
+    for room in chat_rooms:
+        cursor.execute("SELECT username FROM user WHERE id = ?", (room['other_user_id'],))
+        user_info = cursor.fetchone()
+        chat_rooms_fixed.append({
+            'id': room['id'],
+            'product_title': room['product_title'],
+            'other_username': user_info['username'] if user_info else '알 수 없음'
+        })
+
+    return render_template(
+        "seller_chat_list.html", 
+        chat_rooms=chat_rooms_fixed)
 
 # 관리자 페이지
 @app.route('/admin')
