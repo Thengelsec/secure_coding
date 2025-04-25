@@ -124,5 +124,10 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </div>
+  <!-- Socket.IO 연결 스크립트 (공통 적용) -->
+  <script>
+    const socket = io();  // 연결 유지됨
+  </script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

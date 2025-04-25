@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from flask_wtf import CSRFProtect
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_talisman import Talisman
 
 app = Flask(__name__)
 # 세션 보안
@@ -19,6 +20,16 @@ app.config['WTF_CSRF_ENABLED'] = True
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-only-insecure-key') 
 DATABASE = 'market.db'
 socketio = SocketIO(app)
+
+# 보안 헤더 적용
+csp = {
+    'default-src': ["'self'"],
+    'script-src': ["'self'", "cdnjs.cloudflare.com"],  # socket.io 등 CDN 허용
+    'style-src': ["'self'", "cdnjs.cloudflare.com", "fonts.googleapis.com"],
+    'font-src': ["'self'", "fonts.gstatic.com"]
+}
+
+Talisman(app, content_security_policy=csp)
 
 # 데이터베이스 연결 관리: 요청마다 연결 생성 후 사용, 종료 시 close
 def get_db():
@@ -643,9 +654,19 @@ def report():
 
     if request.method == 'POST':
         target_input = request.form['target_id'].strip()
-        reason = request.form['reason']
+        reason = request.form['reason'].strip()
         report_id = str(uuid.uuid4())
         target_id = None
+
+        if not reason or len(reason) > 300:
+            flash("신고 사유는 1~300자 이내여야 합니다.")
+            return redirect(url_for('report'))
+
+        if 'reason' not in request.form or not request.form['reason'].strip():
+            flash("신고 사유를 입력해주세요.")
+            return redirect(url_for('report'))
+
+        reason = bleach.clean(reason)
 
         # 1. 상품 ID로 조회
         cursor.execute("SELECT id FROM product WHERE id = ?", (target_input,))
@@ -715,13 +736,30 @@ def on_join(data):
         join_room(room)
         print(f"[채팅방 입장] room: {room}")
 
-# 1ㄷ1 채팅 기능
+# 유저별 마지막 메시지
+user_chat_timestamps = {}
+
+# 1 : 1 채팅 기능
 @socketio.on('send_private')
 def on_private_message(data):
+    if 'user_id' not in session:
+        print("[경고] 로그인되지 않은 사용자 메시지 차단")
+        return
+
     room = data.get('room')
     sender_id = data.get('sender_id')
-    message = data.get('message')
+    message = data.get('message', '').strip()
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # 1초 이내 전송시 무시
+    if last_time and (now - last_time).total_seconds() < 1:
+        print(f"[RateLimit] Too fast: {sender_id}")
+        return
+    user_chat_timestamps[sender_id] = now
+
+    # 유효성 검사
+    if not message or len(message) > 300:
+        return
 
     if not room or not sender_id or not message:
         print("[오류] 필수 값 누락:", data)

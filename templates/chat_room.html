@@ -34,15 +34,20 @@
     box.scrollTop = box.scrollHeight;
   });
 
+  let lastSent = 0;
   // 메시지 전송
   document.getElementById("send_btn").addEventListener("click", () => {
+    const now = Date.now();
+    if (now - lastSent < 1000) return;  // 1초 이내 전송 차단
+    lastSent = now;
+    
     const input = document.getElementById("msg_input");
     const msg = input.value.trim();
     if (!msg) return;
 
     socket.emit("send_private", {
       room: roomId,
-      sender_id: senderId,
+      //sender_id: senderId,
       message: msg
     });
 

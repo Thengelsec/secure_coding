@@ -1,0 +1,9 @@
+flask
+flask-socketio
+eventlet
+flask-wtf
+flask-talisman
+wtforms
+email-validator
+bleach
+pyngrok
