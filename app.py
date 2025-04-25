@@ -8,6 +8,8 @@ from flask_wtf import CSRFProtect
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_talisman import Talisman
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 # 세션 보안
@@ -17,7 +19,7 @@ app.permanent_session_lifetime = timedelta(minutes=30)
 #csrf 방지
 csrf = CSRFProtect(app)
 app.config['WTF_CSRF_ENABLED'] = True
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-only-insecure-key') 
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-only-insecure-key')
 DATABASE = 'market.db'
 socketio = SocketIO(app)
 
@@ -633,8 +635,8 @@ def buy_product(product_id):
     db.commit()
     flash("상품이 성공적으로 구매되었습니다.")
     return redirect(url_for('dashboard'))
-
-# 테스트용: 로그인한 사용자의 cash를 0으로 초기화 (나중에 삭제)#################
+"""
+# 테스트용: 로그인한 사용자의 cash를 0으로 초기화
 @app.route('/reset_cash')
 def reset_cash():  # test
 
@@ -644,7 +646,7 @@ def reset_cash():  # test
     db.commit()
     flash("보유 금액이 0원으로 초기화되었습니다. (테스트용 기능)")
     return redirect(url_for('dashboard'))
-
+"""
 # 신고하기
 @app.route('/report', methods=['GET', 'POST'])
 def report():
@@ -1054,8 +1056,8 @@ def unban_user(user_id):
     db.commit()
     flash("사용자 정지가 해제되었습니다.")
     return redirect(request.referrer or url_for('admin_page'))
-
-# 테스트용 관리자 변경 나중에 삭제###########################################
+"""
+# 테스트용 관리자 변경
 @app.route('/make_admin')
 def make_admin():
     db = get_db()
@@ -1072,7 +1074,7 @@ def make_admin():
 
     status = "관리자 권한 부여됨 ✅" if new_status == 1 else "일반 사용자로 전환됨 ⚠️"
     return f"admin 계정: {status}"
-
+"""
 # 에러 핸들러
 @app.errorhandler(500)
 def internal_error(error):
