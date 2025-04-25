@@ -388,13 +388,26 @@ def view_user_profile(user_id):
 @app.route('/product/new', methods=['GET', 'POST'])
 def new_product():
     if request.method == 'POST':
-        title = request.form['title']
-        description = request.form['description']
-        price = int(request.form['price'])
-        seller_id = session['user_id']
-
+        title = request.form['title'].strip()
+        description = request.form['description'].strip()
+        price = request.form['price'].strip()
+        seller_id = session['user_id'].strip()
         image = request.files.get('image')
         image_path = None
+        # 입력값 검증
+        if not title or len(title) > 100:
+            flash("제목은 1~100자 이내여야 합니다.")
+            return redirect(url_for('new_product'))
+        if not description or len(description) > 1000:
+            flash("설명은 1~1000자 이내여야 합니다.")
+            return redirect(url_for('new_product'))
+        try:
+            price = int(price_input)
+            if price < 0:
+                raise ValueError
+        except ValueError:
+            flash("가격은 0 이상의 숫자여야 합니다.")
+            return redirect(url_for('new_product'))
 
         if image and allowed_file(image.filename):
             filename = secure_filename(f"{uuid.uuid4()}_{image.filename}")
@@ -404,6 +417,7 @@ def new_product():
             image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
         product_id = str(uuid.uuid4())
+        seller_id = session['user_id']
         db = get_db()
         cursor = db.cursor()
         cursor.execute(

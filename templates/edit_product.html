@@ -5,6 +5,7 @@
 <h2>상품 수정</h2>
 
 <form method="POST" enctype="multipart/form-data">
+  {{ csrf_token() }}
   <label>제목:</label><br>
   <input type="text" name="title" value="{{ product.title }}"><br><br>
 

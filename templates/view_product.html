@@ -3,6 +3,7 @@
 {% block content %}
 <h2>{{ product.title }}</h2>
 {% if g.user and (g.user['id'] == product.seller_id or g.user['is_admin'] == 1) %}
+  {{ csrf_token() }}  
   <form method="get" action="{{ url_for('edit_product', product_id=product.id) }}">
     <button type="submit">✏️ 수정하기</button>
   </form>
@@ -17,18 +18,21 @@
 
 {% if user and user['id'] != product.seller_id %}
   <form method="get" action="{{ url_for('start_chat', product_id=product.id) }}">
+    {{ csrf_token() }}
     <button type="submit">💬 채팅하기</button>
   </form>
 {% endif %}
 
 {% if user and user['id'] != product.seller_id %}
   <form method="post" action="{{ url_for('buy_product', product_id=product.id) }}">
+    {{ csrf_token() }}
     <button type="submit" onclick="return confirm('구매하시겠습니까?')">💰 구매하기</button>
   </form>
 {% endif %}
 
 {% if user and (user['is_admin'] == 1 or user['id'] == product.seller_id) %}
   <form method="post" action="{{ url_for('delete_product', product_id=product.id) }}">
+    {{ csrf_token() }}
     <button type="submit" onclick="return confirm('상품을 삭제하시겠습니까?')">상품 삭제</button>
   </form>
 {% endif %}
@@ -41,6 +45,7 @@
         <strong>신고자:</strong> {{ r['username'] }}<br>
         <strong>사유:</strong> {{ r['reason'] }}<br>
         <form action="{{ url_for('delete_report', report_id=r['id']) }}" method="post">
+          {{ csrf_token() }}
           <button type="submit">삭제</button>
         </form>
       </li>

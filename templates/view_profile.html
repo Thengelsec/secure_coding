@@ -21,10 +21,12 @@
 {% if user and user['is_admin'] == 1 and user['id'] != target_user.id %}
   {% if target_user.ban == 1 %}
     <form method="post" action="{{ url_for('unban_user', user_id=target_user.id) }}">
+      {{ csrf_token() }}
       <button type="submit" onclick="return confirm('이 사용자의 정지를 해제하시겠습니까?')">정지 해제</button>
     </form>
   {% else %}
     <form method="post" action="{{ url_for('ban_user', user_id=target_user.id) }}">
+      {{ csrf_token() }}
       <button type="submit" onclick="return confirm('이 사용자를 정지하시겠습니까?')">사용자 정지</button>
     </form>
   {% endif %}

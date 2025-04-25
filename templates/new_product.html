@@ -3,6 +3,7 @@
 {% block content %}
 <h2>상품 등록</h2>
 <form method="POST" enctype="multipart/form-data" action="{{ url_for('new_product') }}">
+  {{ csrf_token() }}
   <label>상품명:</label>
   <input type="text" name="title"><br>
 
