@@ -102,6 +102,7 @@
     {% if user %}
     <div style="position: absolute; top: 20px; right: 20px; display: flex; align-items: center; gap: 10px;">
       <form action="{{ url_for('charge') }}" method="get" style="margin: 0;">
+        {{ csrf_token() }}
         <button type="submit" style="padding: 6px 12px; margin: 0; width: auto; background-color: #007AFF; color: white; border: none; border-radius: 4px; cursor: pointer;">
           충전하기
         </button>

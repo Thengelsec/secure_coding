@@ -1,0 +1,6 @@
+<form method="post">
+    {{ csrf_token() }}
+    <label for="password">현재 비밀번호:</label>
+    <input type="password" name="password" required><br>
+    <button type="submit">확인</button>
+  </form>

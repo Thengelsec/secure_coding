@@ -1,13 +1,22 @@
 import sqlite3
 import uuid
-import os
+import os, re, time
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g, abort, send_from_directory
 from flask_socketio import SocketIO, send, join_room, leave_room, emit
-from datetime import datetime
+from datetime import datetime, timedelta
+from flask_wtf import CSRFProtect
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret!'
+# 세션 보안
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = True
+app.permanent_session_lifetime = timedelta(minutes=30)
+#csrf 방지
+csrf = CSRFProtect(app)
+app.config['WTF_CSRF_ENABLED'] = True
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-only-insecure-key') 
 DATABASE = 'market.db'
 socketio = SocketIO(app)
 
@@ -142,18 +151,29 @@ def index():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form['username'].strip()
+        password = request.form['password'].strip()
         db = get_db()
         cursor = db.cursor()
+
+        # 입력값 검증
+        if not re.fullmatch(r'[a-zA-Z0-9_]{4,20}', username):
+            flash('아이디는 영문자, 숫자, 언더스코어로 4~20자여야 합니다.')
+            return redirect(url_for('register'))
+        
+        if len(password) < 8 or len(password) > 30:
+            flash('비밀번호는 8~30자여야 합니다.')
+            return redirect(url_for('register'))
+
         # 중복 사용자 체크
         cursor.execute("SELECT * FROM user WHERE username = ?", (username,))
         if cursor.fetchone() is not None:
             flash('이미 존재하는 사용자명입니다.')
             return redirect(url_for('register'))
         user_id = str(uuid.uuid4())
+        hashed_pw = generate_password_hash(password)
         cursor.execute("INSERT INTO user (id, username, password) VALUES (?, ?, ?)",
-                       (user_id, username, password))
+                       (user_id, username, hashed_pw))
         db.commit()
         flash('회원가입이 완료되었습니다. 로그인 해주세요.')
         return redirect(url_for('login'))
@@ -163,17 +183,38 @@ def register():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form['username'].strip()
+        password = request.form['password'].strip()
+
+        # 실패 카운트 세션으로 저장
+        if 'fail_count' not in session:
+            session['fail_count'] = 0
+
+        if session['fail_count'] >= 5:
+            flash("로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요.")
+            return redirect(url_for('login'))
+
         db = get_db()
         cursor = db.cursor()
-        cursor.execute("SELECT * FROM user WHERE username = ? AND password = ?", (username, password))
+        cursor.execute("SELECT * FROM user WHERE username = ?", (username,))
         user = cursor.fetchone()
-        if user:
-            if user['ban'] == 1:
+
+
+        if user['ban'] == 1:
                 flash('정지된 계정입니다.')
                 return redirect(url_for('login'))
+        
+        if not user or not check_password_hash(user['password'], password):
+            session['fail_count'] += 1
+            time.sleep(1)  # 지연 처리
+            flash("아이디 또는 비밀번호가 올바르지 않습니다.")
+            return redirect(url_for('login'))
+
+        if user:
+            session.clear()
+            session.permanent = True
             session['user_id'] = user['id']
+            session['fail_count'] = 0 
             flash('로그인 성공!')
             return redirect(url_for('dashboard'))
         else:
@@ -186,6 +227,9 @@ def login():
 def change_password():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    if 'reauthed' not in session:
+        flash("비밀번호 변경 전에 본인 인증이 필요합니다.")
+        return redirect(url_for('reauth'))
 
     db = get_db()
     cursor = db.cursor()
@@ -215,6 +259,26 @@ def logout():
     session.pop('user_id', None)
     flash('로그아웃되었습니다.')
     return redirect(url_for('index'))
+
+# 재인증 기능
+@app.route('/reauth', methods=['GET', 'POST'])
+def reauth():
+    if request.method == 'POST':
+        password = request.form['password']
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("SELECT * FROM user WHERE id = ?", (session['user_id'],))
+        user = cursor.fetchone()
+
+        if user and check_password_hash(user['password'], password):
+            session['reauth'] = True
+            flash("본인 인증 완료.")
+            return redirect(url_for('change_password'))
+        else:
+            flash("비밀번호가 올바르지 않습니다.")
+            return redirect(url_for('reauth'))
+
+    return render_template('reauth.html')
 
 # 대시보드: 사용자 정보와 전체 상품 리스트 표시
 @app.route('/dashboard')
@@ -957,6 +1021,19 @@ def make_admin():
     status = "관리자 권한 부여됨 ✅" if new_status == 1 else "일반 사용자로 전환됨 ⚠️"
     return f"admin 계정: {status}"
 
+# 에러 핸들러
+@app.errorhandler(500)
+def internal_error(error):
+    return render_template("error.html", message="서버 내부 오류가 발생했습니다."), 500
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template("error.html", message="페이지를 찾을 수 없습니다."), 404
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    return render_template("error.html", message="알 수 없는 오류가 발생했습니다."), 500
+
 # 포인트 , 표기 필터
 @app.template_filter('comma')
 def comma_format(value):
@@ -968,3 +1045,4 @@ def comma_format(value):
 if __name__ == '__main__':
     init_db()  # 앱 컨텍스트 내에서 테이블 생성
     socketio.run(app, debug=True)
+    #socketio.run(app, debug=False) 테스트용 배포시 이 줄 사용

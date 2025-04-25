@@ -4,6 +4,7 @@
 <h2>프로필 관리</h2>
 <p>사용자명: {{ user.username }}</p>
 <form method="post">
+  {{ csrf_token() }}
   소개글: <br>
   <textarea name="bio" rows="4" cols="50">{{ user.bio or '' }}</textarea><br>
   <button type="submit">프로필 업데이트</button>
